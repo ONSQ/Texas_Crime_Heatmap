@@ -70,10 +70,10 @@ st_data = st_folium(m, width=900, height=600)
 
 # --- CITY SEARCH + TABLES ---
 if search_city:
-    results = df[df["Agency Name_"].str.lower().str.contains(search_city.lower())]
+    results = df[df["Agency Name"].str.lower().str.contains(search_city.lower())]
     if not results.empty:
         city = results.iloc[0]
-        st.markdown(f"### {city['Agency Name_']}")
+        st.markdown(f"### {city['Agency Name']}")
         st.write(f"**{crime_col}**: {city[crime_col]:,.0f}")
         st.write(f"Coordinates: ({city['latitude']:.4f}, {city['longitude']:.4f})")
     else:
@@ -81,7 +81,7 @@ if search_city:
 
 # Top/Bottom tables
 st.subheader(f"Safest & Most Dangerous Cities by {crime_col}")
-sorted_df = df_heat[["Agency Name_", crime_col]].sort_values(by=crime_col)
+sorted_df = df_heat[["Agency Name", crime_col]].sort_values(by=crime_col)
 col1, col2 = st.columns(2)
 with col1:
     st.markdown("#### Safest (Lowest Crime)")
