@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import geopandas as gpd
@@ -9,15 +10,8 @@ import os
 # --- DATA LOADING ---
 @st.cache_resource
 def load_data():
-    # Load Excel data (assume sheet name and multi-level headers as in your script)
-    df = pd.read_excel(
-        "Texas_Offense_Type_by_Agency_2023.xlsx",
-        sheet_name="2023 TX",
-        header=[0, 1]
-    )
-
-    # Flatten multi-index columns for ease
-    df.columns = ['_'.join([str(i) for i in col]).strip('_') for col in df.columns.values]
+    df = pd.read_excel("Texas_Offense_Type_by_Agency_2023.xlsx", header=0)
+    df.columns = df.columns.str.strip().str.replace("\n", " ").str.replace(" ", "_")
     return df
 
 @st.cache_resource
@@ -34,10 +28,15 @@ st.caption("Search Texas cities and visualize crime by offense type. Data: TX DP
 df = load_data()
 gdf_places = load_places()
 
-# Identify available crime types from your columns
-crime_types = [col for col in df.columns if col.startswith("Crimes Against")]
-st.sidebar.header("Filters")
-crime_col = st.sidebar.selectbox("Choose crime category:", crime_types)
+# Identify all numeric crime-related columns
+exclude_cols = {"Agency_Name", "Agency_Type", "Population"}
+crime_types = [col for col in df.columns if col not in exclude_cols and pd.api.types.is_numeric_dtype(df[col])]
+
+if crime_types:
+    crime_col = st.sidebar.selectbox("Choose crime category:", sorted(crime_types))
+else:
+    st.error("No numeric crime category columns found in the dataset.")
+    st.stop()
 
 # Search bar
 search_city = st.sidebar.text_input("Search for a Texas city:")
@@ -51,29 +50,40 @@ def get_city_latlon(name):
     else:
         return None, None
 
-df["latitude"] = df["Agency Name_"].apply(lambda x: get_city_latlon(x)[0])
-df["longitude"] = df["Agency Name_"].apply(lambda x: get_city_latlon(x)[1])
-df_heat = df.dropna(subset=["latitude", "longitude"])
+df["latitude"] = df["Agency_Name"].apply(lambda x: get_city_latlon(str(x).strip())[0] if pd.notnull(x) else None)
+df["longitude"] = df["Agency_Name"].apply(lambda x: get_city_latlon(str(x).strip())[1] if pd.notnull(x) else None)
+
+# Ensure numeric and drop rows without lat/lon or crime data
+df[crime_col] = pd.to_numeric(df[crime_col], errors="coerce")
+df_heat = df.dropna(subset=["latitude", "longitude", crime_col])
 
 # --- MAP ---
 st.subheader("Crime Heatmap")
-m = folium.Map(location=[31.9686, -99.9018], zoom_start=6)
+
+if not df_heat.empty:
+    avg_lat = df_heat["latitude"].mean()
+    avg_lon = df_heat["longitude"].mean()
+else:
+    avg_lat, avg_lon = 31.9686, -99.9018
+
+m = folium.Map(location=[avg_lat, avg_lon], zoom_start=6)
+
 heat_data = [
     [row["latitude"], row["longitude"], row[crime_col]]
     for _, row in df_heat.iterrows()
-    if pd.notnull(row[crime_col])
 ]
 
 if heat_data:
     HeatMap(heat_data, radius=15, blur=10, max_zoom=9).add_to(m)
+
 st_data = st_folium(m, width=900, height=600)
 
 # --- CITY SEARCH + TABLES ---
 if search_city:
-    results = df[df["Agency Name"].str.lower().str.contains(search_city.lower())]
+    results = df[df["Agency_Name"].str.lower().str.contains(search_city.lower(), na=False)]
     if not results.empty:
         city = results.iloc[0]
-        st.markdown(f"### {city['Agency Name']}")
+        st.markdown(f"### {city['Agency_Name']}")
         st.write(f"**{crime_col}**: {city[crime_col]:,.0f}")
         st.write(f"Coordinates: ({city['latitude']:.4f}, {city['longitude']:.4f})")
     else:
@@ -81,7 +91,7 @@ if search_city:
 
 # Top/Bottom tables
 st.subheader(f"Safest & Most Dangerous Cities by {crime_col}")
-sorted_df = df_heat[["Agency Name", crime_col]].sort_values(by=crime_col)
+sorted_df = df_heat[["Agency_Name", crime_col]].sort_values(by=crime_col)
 col1, col2 = st.columns(2)
 with col1:
     st.markdown("#### Safest (Lowest Crime)")
