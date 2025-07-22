@@ -23,13 +23,14 @@ def load_places():
 # --- APP LOGIC ---
 st.set_page_config(layout="wide")
 st.title("Texas Crime Rate Interactive Heatmap")
-st.caption("Search Texas cities and visualize crime by offense type. Data: TX DPS 2023")
+st.caption("Search Texas cities and visualize crime by offense type. Data: TX DPS 2023")    
+st.caption("Webapp by ONSQ (WGN273)")
 
 df = load_data()
 gdf_places = load_places()
 
 # Identify all numeric crime-related columns
-exclude_cols = {"Agency_Name", "Agency_Type", "Population"}
+exclude_cols = {"Agency_Name", "Agency_Type", "Population", "latitude", "longitude"}
 crime_types = [col for col in df.columns if col not in exclude_cols and pd.api.types.is_numeric_dtype(df[col])]
 
 if crime_types:
