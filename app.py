@@ -36,7 +36,17 @@ df = load_data()
 land_df = load_land_area()
 
 # Merge land area data with crime data on 'Agency'
+# Ensure column names are consistent and exist
+if "Agency" not in df.columns:
+    st.error("Column 'Agency' not found in TexasCrimeDataCities.csv")
+    st.stop()
+
+if "city" not in land_df.columns:
+    st.error("Column 'city' not found in LandAreaTX2.csv")
+    st.stop()
+
 df = df.merge(land_df, how="left", left_on="Agency", right_on="city")
+
 
 # Calculate population density
 if "Population" in df.columns and "Land Area" in df.columns:
