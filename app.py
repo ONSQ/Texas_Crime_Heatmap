@@ -30,7 +30,7 @@ def load_places():
 st.set_page_config(layout="wide")
 st.title("Texas Crime Rate Interactive Heatmap")
 st.caption("Search Texas cities and visualize crime by offense type. Data: FBI NIBRS & TX DPS 2023")    
-st.caption("Webapp by ONSQ (WGN273), Data crafting by Jushua Cherry")
+st.caption("Webapp by Owen Eskew (WGN273), Data crafting by Jushua Cherry (QVM945)")
 
 df = load_data()
 land_df = load_land_area()
@@ -55,7 +55,8 @@ else:
     df["Population Density"] = None
 
 # Calculate crime percentage columns (crime per population * 100)
-exclude_cols = {"Agency", "Agency Type", "Population", "Land Area", "latitude", "longitude"}
+exclude_cols = {"Agency", "Agency Type", "Population","land", "land area", "latitude", "longitude","INTPTLAT", "INTPTLONG", "centroid", "city", "Population Density"}
+
 for col in df.columns:
     if col not in exclude_cols and pd.api.types.is_numeric_dtype(df[col]):
         if "Population" in df.columns:
@@ -68,7 +69,18 @@ crime_types = [col for col in df.columns if col not in exclude_cols
                and pd.api.types.is_numeric_dtype(df[col]) and "%" not in col]
 
 if crime_types:
-    crime_col = st.sidebar.selectbox("Choose crime category (absolute numbers):", sorted(crime_types))
+    # Sort the list and move "Total Offenses" to the top if it exists
+    sorted_crime_types = sorted(crime_types)
+    if "Total Offenses" in sorted_crime_types:
+        sorted_crime_types.remove("Total Offenses")
+        sorted_crime_types.insert(0, "Total Offenses")
+
+    # Dropdown default = first item (Total Offenses)
+    crime_col = st.sidebar.selectbox(
+        "Choose crime category (absolute numbers):",
+        sorted_crime_types,
+        index=0
+    )
 else:
     st.error("No numeric crime category columns found in the dataset.")
     st.stop()
