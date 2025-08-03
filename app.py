@@ -214,14 +214,14 @@ try:
                 f"{int(pop_int * 1.05):,} (upper) / {int(pop_int * 0.95):,} (lower)"
             )
         else:
-            st.warning("Unexpected output format from model, showing ±5% fallback:")
+            st.warning("Unexpected output format from model")
             st.write(
                 f"**Predicted Population Growth ±5%:** "
                 f"{int(pop_int * 1.05):,} (upper) / {int(pop_int * 0.95):,} (lower)"
             )
 
     else:
-        st.warning("Model could not be executed, showing ±5% fallback:")
+        st.warning("Model could not be executed")
         st.write(
             f"**Predicted Population Growth ±5%:** "
             f"{int(pop_int * 1.05):,} (upper) / {int(pop_int * 0.95):,} (lower)"
@@ -229,7 +229,7 @@ try:
 
 except PermissionError:
     # Clean fallback: show only ±5% growth
-    st.warning("Model unavailable on this host, showing ±5% fallback:")
+    st.warning("Crime prediction Model unavailable on this host")
     st.write(
         f"**Predicted Population Growth ±5%:** "
         f"{int(pop_int * 1.05):,} (upper) / {int(pop_int * 0.95):,} (lower)"
