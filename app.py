@@ -229,7 +229,7 @@ try:
 
 except PermissionError:
     # Clean fallback: show only ±5% growth
-    st.warning("Crime prediction Model unavailable on this host")
+    st.warning("Crime Prediction Model unavailable on this host")
     st.write(
         f"**Predicted Population Growth ±5%:** "
         f"{int(pop_int * 1.05):,} (upper) / {int(pop_int * 0.95):,} (lower)"
