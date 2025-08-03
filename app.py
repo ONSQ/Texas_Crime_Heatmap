@@ -108,8 +108,8 @@ df["longitude"] = df["Agency"].apply(lambda x: get_city_latlon(str(x).strip())[1
 # Ensure numeric and drop rows without lat/lon or crime data
 df[crime_col] = pd.to_numeric(df[crime_col], errors="coerce")
 # Simple prediction: assume a fixed 5% growth for demo
-# df[f"{crime_col} Predicted"] = df[crime_col] * 1.05
-# df[f"{crime_col} % Predicted"] = df[f"{crime_col} Predicted"] / df["Population"] * 100
+df[f"{crime_col} Predicted"] = df[crime_col] * 1.05
+df[f"{crime_col} % Predicted"] = df[f"{crime_col} Predicted"] / df["Population"] * 100
 df_heat = df.dropna(subset=["latitude", "longitude", crime_col])
 
 
@@ -144,9 +144,24 @@ if search_city:
         #     predicted_percent = city.get(f"{crime_col} % Predicted", None)
         #     if pd.notnull(predicted_value):
         #         st.write(f"**Predicted Next Year:** {predicted_value:,.0f} ({predicted_percent:.2f}%)")
+    else:
+        st.warning("City not found. Try a different spelling?")
 else:
-    st.warning("City not found. Try a different spelling?")
+    # Show statewide summary info
+    total_population = df["Population"].sum()
+    total_crime = df[crime_col].sum()
 
+    st.markdown("### Texas Statewide")
+
+    # Population (no coordinates for state)
+    st.write(f"**Population:** {int(total_population):,}")
+
+    st.write(f"**{crime_col} (Total):** {int(total_crime):,}")
+
+    # Calculate % of population for statewide data
+    if total_population > 0:
+        percent_value = (total_crime / total_population) * 100
+        st.write(f"**{crime_col} (% of population):** {percent_value:.2f}%")
 
 # Determine population value (city or total)
 if search_city:
@@ -159,52 +174,73 @@ if search_city:
 else:
     population_value = str(int(df["Population"].sum()))
 
-# Run ds_project.exe automatically (type=1 fixed)
+pop_int = int(population_value)
+
+st.subheader("Model Prediction")
+
 try:
+    # Attempt to run the external model
     result = subprocess.run(
         ["./ds_project.exe", population_value, "1"],
         capture_output=True,
         text=True
     )
+
     if result.returncode == 0:
         output_str = result.stdout.strip()
         numbers = output_str.split()
 
         if len(numbers) == 2:
-            try:
-                lower = int(numbers[0])
-                upper = int(numbers[1])
-                pop_int = int(population_value)
+            lower = int(numbers[0])
+            upper = int(numbers[1])
 
-                lower_percent = (lower / pop_int) * 100
-                upper_percent = (upper / pop_int) * 100
+            lower_percent = (lower / pop_int) * 100
+            upper_percent = (upper / pop_int) * 100
 
-                # Determine increase or decrease for range
-                if upper > pop_int and lower > pop_int:
-                    trend = "increase"
-                elif upper < pop_int and lower < pop_int:
-                    trend = "decrease"
-                else:
-                    trend = "mixed change"
+            # Determine increase or decrease
+            if upper > pop_int and lower > pop_int:
+                trend = "increase"
+            elif upper < pop_int and lower < pop_int:
+                trend = "decrease"
+            else:
+                trend = "mixed change"
 
-                st.subheader("Model Prediction")
-                st.write(
-                    f"**Prediction Range:** {lower:,} - {upper:,} "
-                    f"(**{lower_percent:.2f}% - {upper_percent:.2f}% of population**, "
-                    f"{trend})"
-                )
-
-            except ValueError:
-                st.error(f"Unexpected number format: {output_str}")
-
+            st.write(
+                f"**Prediction Crime Range:** {lower:,} - {upper:,} "
+                f"(**{lower_percent:.2f}% - {upper_percent:.2f}% of population**, {trend})"
+            )
+            st.write(
+                f"**Predicted Population Growth ±5%:** "
+                f"{int(pop_int * 1.05):,} (upper) / {int(pop_int * 0.95):,} (lower)"
+            )
         else:
-            st.error(f"Unexpected output format: {output_str}")
+            st.warning("Unexpected output format from model, showing ±5% fallback:")
+            st.write(
+                f"**Predicted Population Growth ±5%:** "
+                f"{int(pop_int * 1.05):,} (upper) / {int(pop_int * 0.95):,} (lower)"
+            )
 
     else:
-        st.error(f"Error running ds_project: {result.stderr}")
+        st.warning("Model could not be executed, showing ±5% fallback:")
+        st.write(
+            f"**Predicted Population Growth ±5%:** "
+            f"{int(pop_int * 1.05):,} (upper) / {int(pop_int * 0.95):,} (lower)"
+        )
+
+except PermissionError:
+    # Clean fallback: show only ±5% growth
+    st.warning("Model unavailable on this host, showing ±5% fallback:")
+    st.write(
+        f"**Predicted Population Growth ±5%:** "
+        f"{int(pop_int * 1.05):,} (upper) / {int(pop_int * 0.95):,} (lower)"
+    )
 
 except Exception as e:
-    st.error(f"Exception occurred: {e}")
+    st.error(f"Unexpected error: {e}")
+    st.write(
+        f"**Predicted Population Growth ±5%:** "
+        f"{int(pop_int * 1.05):,} (upper) / {int(pop_int * 0.95):,} (lower)"
+    )
 
 # Top/Bottom tables
 st.subheader(f"Safest & Most Dangerous Cities by {crime_col}")
@@ -226,7 +262,7 @@ with col2:
 # --- MAP ---
 st.subheader(f"    {crime_col} Heatmap")
 
-avg_lat, avg_lon = 31.9686, -99.9018
+avg_lat, avg_lon = 31.4, -99.9013
 zoom_level = 6
 
 if search_city:
