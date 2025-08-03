@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import geopandas as gpd
 import folium
+import subprocess
 from folium.plugins import HeatMap
 from folium import CircleMarker, Tooltip
 from streamlit_folium import st_folium
@@ -64,6 +65,9 @@ for col in df.columns:
 
 gdf_places = load_places()
 
+# Search bar
+search_city = st.sidebar.text_input("Search for a Texas city:")
+
 # Identify all numeric crime-related columns (absolute numbers only)
 crime_types = [col for col in df.columns if col not in exclude_cols 
                and pd.api.types.is_numeric_dtype(df[col]) and "%" not in col]
@@ -87,11 +91,8 @@ else:
 
 # Toggle for using % vs absolute
 use_percentage = st.sidebar.checkbox("Use % (crime per population) for heatmap", value=False)
-show_predictions = st.sidebar.checkbox("Show Predictions (next year)", value=False)
+# show_predictions = st.sidebar.checkbox("Show Predictions (next year)", value=False)
 
-
-# Search bar
-search_city = st.sidebar.text_input("Search for a Texas city:")
 
 # --- PROCESS DATA ---
 def get_city_latlon(name):
@@ -107,9 +108,120 @@ df["longitude"] = df["Agency"].apply(lambda x: get_city_latlon(str(x).strip())[1
 # Ensure numeric and drop rows without lat/lon or crime data
 df[crime_col] = pd.to_numeric(df[crime_col], errors="coerce")
 # Simple prediction: assume a fixed 5% growth for demo
-df[f"{crime_col} Predicted"] = df[crime_col] * 1.05
-df[f"{crime_col} % Predicted"] = df[f"{crime_col} Predicted"] / df["Population"] * 100
+# df[f"{crime_col} Predicted"] = df[crime_col] * 1.05
+# df[f"{crime_col} % Predicted"] = df[f"{crime_col} Predicted"] / df["Population"] * 100
 df_heat = df.dropna(subset=["latitude", "longitude", crime_col])
+
+
+
+# --- CITY SEARCH + TABLES ---
+if search_city:
+    results = df[df["Agency"].str.lower().str.contains(search_city.lower(), na=False)]
+    if not results.empty:
+        city = results.iloc[0]
+        st.markdown(f"### {city['Agency']}")
+
+        # Move coordinates directly under the city name
+        if pd.notnull(city["latitude"]) and pd.notnull(city["longitude"]):
+            st.write(f"**Coordinates:** ({city['latitude']:.4f}, {city['longitude']:.4f})")
+        if "Population" in city:
+            st.write(f"**Population:** {int(city['Population']):,}")
+        if "Population Density" in city and pd.notnull(city["Population Density"]):
+            st.write(f"**Population Density:** {city['Population Density']:.1f} people per sq. mile")
+
+        abs_value = city[crime_col]
+        percent_col = f"{crime_col} %"
+        percent_value = city[percent_col] if percent_col in city else None
+
+        if pd.notnull(abs_value):
+            st.write(f"**{crime_col} (Total):** {abs_value:,.0f}")
+
+        if percent_value is not None and pd.notnull(percent_value):
+            st.write(f"**{crime_col} (% of population):** {percent_value:.2f}%")
+
+        # if show_predictions:
+        #     predicted_value = city.get(f"{crime_col} Predicted", None)
+        #     predicted_percent = city.get(f"{crime_col} % Predicted", None)
+        #     if pd.notnull(predicted_value):
+        #         st.write(f"**Predicted Next Year:** {predicted_value:,.0f} ({predicted_percent:.2f}%)")
+else:
+    st.warning("City not found. Try a different spelling?")
+
+
+# Determine population value (city or total)
+if search_city:
+    results = df[df["Agency"].str.lower().str.contains(search_city.lower(), na=False)]
+    if not results.empty:
+        city = results.iloc[0]
+        population_value = str(int(city["Population"]))
+    else:
+        population_value = str(int(df["Population"].sum()))
+else:
+    population_value = str(int(df["Population"].sum()))
+
+# Run ds_project.exe automatically (type=1 fixed)
+try:
+    result = subprocess.run(
+        ["./ds_project.exe", population_value, "1"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode == 0:
+        output_str = result.stdout.strip()
+        numbers = output_str.split()
+
+        if len(numbers) == 2:
+            try:
+                lower = int(numbers[0])
+                upper = int(numbers[1])
+                pop_int = int(population_value)
+
+                lower_percent = (lower / pop_int) * 100
+                upper_percent = (upper / pop_int) * 100
+
+                # Determine increase or decrease for range
+                if upper > pop_int and lower > pop_int:
+                    trend = "increase"
+                elif upper < pop_int and lower < pop_int:
+                    trend = "decrease"
+                else:
+                    trend = "mixed change"
+
+                st.subheader("Model Prediction")
+                st.write(
+                    f"**Prediction Range:** {lower:,} - {upper:,} "
+                    f"(**{lower_percent:.2f}% - {upper_percent:.2f}% of population**, "
+                    f"{trend})"
+                )
+
+            except ValueError:
+                st.error(f"Unexpected number format: {output_str}")
+
+        else:
+            st.error(f"Unexpected output format: {output_str}")
+
+    else:
+        st.error(f"Error running ds_project: {result.stderr}")
+
+except Exception as e:
+    st.error(f"Exception occurred: {e}")
+
+# Top/Bottom tables
+st.subheader(f"Safest & Most Dangerous Cities by {crime_col}")
+percent_col = f"{crime_col} %"
+cols_to_show = ["Agency", crime_col]
+if percent_col in df_heat.columns:
+    cols_to_show.append(percent_col)
+# if show_predictions:
+#    cols_to_show.append(f"{crime_col} Predicted")
+sorted_df = df_heat[cols_to_show].sort_values(by=crime_col)
+col1, col2 = st.columns(2)
+with col1:
+    st.markdown("#### Safest (Lowest Crime)")
+    st.dataframe(sorted_df.head(10).reset_index(drop=True))
+with col2:
+    st.markdown("#### Most Dangerous (Highest Crime)")
+    st.dataframe(sorted_df.tail(10).sort_values(by=crime_col, ascending=False).reset_index(drop=True))
 
 # --- MAP ---
 st.subheader(f"    {crime_col} Heatmap")
@@ -175,13 +287,13 @@ for _, row in df_heat.iterrows():
     if percent_value is not None and pd.notnull(percent_value):
         tooltip_text += f"% of population: {percent_value:.2f}%<br>"
 
-    if show_predictions:
-        predicted_value = row.get(f"{crime_col} Predicted", None)
-        predicted_percent = row.get(f"{crime_col} % Predicted", None)
-        if predicted_value is not None and pd.notnull(predicted_value):
-            tooltip_text += f"<b>Predicted:</b> {predicted_value:,.0f}"
-            if predicted_percent is not None:
-                tooltip_text += f" ({predicted_percent:.2f}%)"
+    # if show_predictions:
+    #     predicted_value = row.get(f"{crime_col} Predicted", None)
+    #     predicted_percent = row.get(f"{crime_col} % Predicted", None)
+    #     if predicted_value is not None and pd.notnull(predicted_value):
+    #         tooltip_text += f"<b>Predicted:</b> {predicted_value:,.0f}"
+    #         if predicted_percent is not None:
+    #             tooltip_text += f" ({predicted_percent:.2f}%)"
 
     CircleMarker(
         location=[row["latitude"], row["longitude"]],
@@ -193,56 +305,4 @@ for _, row in df_heat.iterrows():
         tooltip=Tooltip(tooltip_text, sticky=True, direction="top")
     ).add_to(m)
 
-
-
-
 st_data = st_folium(m, width=900, height=600)
-
-
-# --- CITY SEARCH + TABLES ---
-if search_city:
-    results = df[df["Agency"].str.lower().str.contains(search_city.lower(), na=False)]
-    if not results.empty:
-        city = results.iloc[0]
-        st.markdown(f"### {city['Agency']}")
-
-        abs_value = city[crime_col]
-        percent_col = f"{crime_col} %"
-        percent_value = city[percent_col] if percent_col in city else None
-
-        if pd.notnull(abs_value):
-            st.write(f"**{crime_col} (Total):** {abs_value:,.0f}")
-
-        if percent_value is not None and pd.notnull(percent_value):
-            st.write(f"**{crime_col} (% of population):** {percent_value:.2f}%")
-
-        if show_predictions:
-            predicted_value = city.get(f"{crime_col} Predicted", None)
-            predicted_percent = city.get(f"{crime_col} % Predicted", None)
-            if pd.notnull(predicted_value):
-                st.write(f"**Predicted Next Year:** {predicted_value:,.0f} ({predicted_percent:.2f}%)")
-        if "Population" in city:
-            st.write(f"**Population:** {int(city['Population']):,}")
-        if "Population Density" in city and pd.notnull(city["Population Density"]):
-            st.write(f"**Population Density:** {city['Population Density']:.1f} people per sq. mile")
-
-        st.write(f"Coordinates: ({city['latitude']:.4f}, {city['longitude']:.4f})")
-    else:
-        st.warning("City not found. Try a different spelling?")
-
-# Top/Bottom tables
-st.subheader(f"Safest & Most Dangerous Cities by {crime_col}")
-percent_col = f"{crime_col} %"
-cols_to_show = ["Agency", crime_col]
-if percent_col in df_heat.columns:
-    cols_to_show.append(percent_col)
-if show_predictions:
-    cols_to_show.append(f"{crime_col} Predicted")
-sorted_df = df_heat[cols_to_show].sort_values(by=crime_col)
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown("#### Safest (Lowest Crime)")
-    st.dataframe(sorted_df.head(10).reset_index(drop=True))
-with col2:
-    st.markdown("#### Most Dangerous (Highest Crime)")
-    st.dataframe(sorted_df.tail(10).sort_values(by=crime_col, ascending=False).reset_index(drop=True))
