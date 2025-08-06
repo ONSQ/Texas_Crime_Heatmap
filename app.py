@@ -32,7 +32,7 @@ st.set_page_config(layout="wide")
 st.title("Texas Crime Rate Interactive Heatmap")
 st.caption("Search Texas cities and visualize crime by offense type.")
 st.caption("Data from the 2023 FBI NIBRS, TX DP2023, and USCensus Datasets. All crimes listed are preadjudicated and not convictions.")    
-st.caption("Webapp by Owen Eskew (WGN273), Data crafting by Jushua Cherry (QVM945)")
+st.caption("Webapp by Owen Eskew (WGN372), Data crafting by Jushua Cherry (QVM945)")
 
 
 df = load_data()
